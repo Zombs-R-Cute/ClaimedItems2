@@ -20,7 +20,7 @@ namespace Shauna.ClaimedItems
         
         public void LoadDefaults()
         {
-            EnableAdminOverride = false;
+            EnableAdminOverride = true;
             LockStorage = true;
             LogStorageAction = false;
             UnlockedStorageItemId = 38;
