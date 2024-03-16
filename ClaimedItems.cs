@@ -106,7 +106,12 @@ namespace Shauna.ClaimedItems
         {
             UnturnedPlayer player = UnturnedPlayer.FromPlayer(instigatingPlayer);
             allow = true;
-
+            
+            
+            if(player.IsAdmin && Configuration.Instance.EnableAdminOverride 
+               || Configuration.Instance.AllowCarjackingOfVehiclesOfOwnerOnOwnersClaimByOthers)
+                return;
+            
             if (PlayerAllowedToBuild(player, player.Player.transform.position))
                 return;
                 
@@ -431,11 +436,15 @@ namespace Shauna.ClaimedItems
         private void OnHarvestOrSalvageRequested(CSteamID steamid, byte x, byte y, ushort plant, ushort index,
             ref bool shouldallow, bool isHarvest)
         {
+            shouldallow = true;
             if (BarricadeManager.tryGetRegion(x, y, plant, out BarricadeRegion region))
             {
                 BarricadeData data = region.barricades[index];
 
                 UnturnedPlayer player = UnturnedPlayer.FromCSteamID(steamid);
+                if(player.IsAdmin && Configuration.Instance.EnableAdminOverride)
+                    return;
+
                 if ((CSteamID) data.owner ==
                     player.CSteamID) //in Arid notepads can be placed anywhere, allow them to be collected if it's the owner's
                     return;

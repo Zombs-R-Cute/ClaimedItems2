@@ -17,6 +17,8 @@ namespace Shauna.ClaimedItems
         public bool RemoveOrphanedApprovalSigns;
         public ushort[] ApprovalSignIds;
         public string SignTextToSearchFor;
+        public bool AllowCarjackingOfVehiclesOfOwnerOnOwnersClaimByOthers;
+        
         
         public void LoadDefaults()
         {
@@ -32,6 +34,7 @@ namespace Shauna.ClaimedItems
             RemoveOrphanedApprovalSigns = true;
             ApprovalSignIds = new ushort[] {1098, 1470}; // Metal Sign, Metal Placard
             SignTextToSearchFor = "APPROVED";
+            AllowCarjackingOfVehiclesOfOwnerOnOwnersClaimByOthers = false;
         }
     }
 }
