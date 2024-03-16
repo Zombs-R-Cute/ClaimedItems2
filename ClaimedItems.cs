@@ -49,7 +49,7 @@ namespace Shauna.ClaimedItems
 
     public class ClaimedItems : RocketPlugin<ClaimedItemsConfiguration>
     {
-        string filename = "Plugins/ClaimedItems/ID-Name.json";
+        string filename = "Plugins/ClaimedItems2/ID-Name.json";
 
         /// <summary>
         /// Maintains the state of items moved for preventing theft by essentially locking storage
