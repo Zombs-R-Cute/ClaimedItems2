@@ -6,6 +6,7 @@ using System.Threading;
 using Newtonsoft.Json;
 using Rocket.Core.Plugins;
 using Rocket.Unturned;
+using Rocket.Unturned.Chat;
 using Rocket.Unturned.Items;
 using Rocket.Unturned.Player;
 using SDG.Unturned;
@@ -352,6 +353,9 @@ namespace Shauna.ClaimedItems
             {
                 case PlayerItemState.ItemState.Normal:
 
+                    if (!playerItemState.hasItem())
+                        return;
+                    
                     if (Configuration.Instance.EnableAdminOverride && player.IsAdmin)
                         return;
 
@@ -360,10 +364,6 @@ namespace Shauna.ClaimedItems
 
                     // no vehicle, see if on own claim 
                     if (PlayerAllowedToBuild(player, player.Player.transform.position)) // ignore own claim
-                        return;
-
-
-                    if (!playerItemState.hasItem())
                         return;
 
                     if (isFreeCrate(player) &&
@@ -476,7 +476,7 @@ namespace Shauna.ClaimedItems
 
         private bool PlayerAllowedToBuild(UnturnedPlayer player, Vector3 location)
         {
-            if (ClaimManager.checkCanBuild(location, player.CSteamID, player.SteamGroupID, false))
+            if (ClaimManager.checkCanBuild(location, player.CSteamID, player.Player.quests.groupID, false))
                 return true;
             return false;
         }
