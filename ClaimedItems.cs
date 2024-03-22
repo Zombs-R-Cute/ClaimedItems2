@@ -19,33 +19,146 @@ namespace Shauna.ClaimedItems
 {
     public class PlayerItemState
     {
+        private byte _sStateIndex = 0;
+        private byte _dStateIndex = 1;
+
         public enum ItemState
         {
             Normal, // Nothing to undo
             UndoMove, // A thief trying to steal from a crate
+            UndoSwap,
+            UndoSwapInProgress
         }
 
-        public byte sPage;
-        public byte sIndex;
-        public ItemJar sJar;
-        public ItemState itemState = ItemState.Normal;
+        private byte[] _sPages = new byte[2];
+        private byte[] _dPages = new byte[2];
+        private byte[] _dIndicies = new byte[2];
+        private ItemJar[] _sJars = new ItemJar[2];
+        private ItemJar[] _dJars = new ItemJar[2];
+        private ItemState _itemState = ItemState.Normal;
+        private bool _dropRequested = false;
 
-        public void SetSource(byte page, byte index, ItemJar jar)
+        public bool DropRequested
         {
-            sPage = page;
-            sIndex = index;
-            sJar = jar;
+            get { return _dropRequested; }
+            set { _dropRequested = value; }
         }
 
-        public void ClearSource()
+        public byte sPage
         {
-            sJar = null;
+            get { return _sPages[_sStateIndex]; }
         }
 
-        public bool hasItem()
+        public byte dPage
         {
-            return sJar != null;
+            get { return _dPages[_sStateIndex]; }
         }
+
+        public ItemJar sJar
+        {
+            get { return _sJars[_sStateIndex]; }
+        }
+
+        public ItemState itemState
+        {
+            get { return _itemState; }
+            set
+            {
+                _itemState = value;
+            }
+        }
+
+        public bool hasSourceItem
+        {
+            get { return _sJars[_sStateIndex] != null; }
+        }
+
+        public bool isReadyToSwapBack
+        {
+            get { return _sStateIndex == 1 && _dStateIndex == 0; }
+        }
+
+        public bool IsPageStorage
+        {
+            get
+            {
+                for (int i = 0; i < 2; i++)
+                    if (_dPages[i] == 7 || _sPages[i] == 7)
+                        return true;
+
+                return false;
+            }
+        }
+
+
+        public void SetSource(byte page, ItemJar jar)
+        {
+            if (_dropRequested)
+            {
+                _dropRequested = false;
+                return;
+            }
+
+            
+            if (hasSourceItem) //if there's an item already stored assume swap
+            {
+                if (_sPages[0] == 7 || page == 7)
+                {
+                    _sStateIndex = 1;
+                    itemState = ItemState.UndoSwap;
+                }
+            }
+
+            _sPages[_sStateIndex] = page;
+            _sJars[_sStateIndex] = jar;
+
+                    }
+
+        public void SetDest(byte page, byte index, ItemJar jar)
+        {
+            if (_dJars[1] != null)
+                _dStateIndex = 0;
+
+            _dIndicies[_dStateIndex] = index;
+            _dPages[_dStateIndex] = page;
+            _dJars[_dStateIndex] = jar;
+            
+        }
+
+        public void ResetState()
+        {
+            for (int i = 0; i < 2; i++)
+            {
+                _sJars[i] = null;
+                _dJars[i] = null;
+                _sPages[i] = 0;
+                _dPages[i] = 0;
+            }
+
+            _itemState = ItemState.Normal;
+            _sStateIndex = 0;
+            _dStateIndex = 1;
+            _dropRequested = false;
+        }
+
+        public void GetSwappedSourceAndDest(out byte item0sPage, out ItemJar item0sJar, out byte item0dPage,
+            out ItemJar item0dJar, out byte item0dIndex, out byte item1sPage, out ItemJar item1sJar,
+            out byte item1dPage,
+            out ItemJar item1dJar, out byte item1dIndex)
+        {
+            item0sPage = _sPages[0];
+            item0sJar = _sJars[0];
+            item0dPage = _dPages[1];
+            item0dJar = _dJars[1];
+            item0dIndex = _dIndicies[1];
+            item1sPage = _sPages[1];
+            item1sJar = _sJars[1];
+            item1dPage = _dPages[0];
+            item1dJar = _dJars[0];
+            item1dIndex = _dIndicies[0];
+        }
+        
+        
     }
 
     public class ClaimedItems : RocketPlugin<ClaimedItemsConfiguration>
@@ -58,7 +171,7 @@ namespace Shauna.ClaimedItems
         private Dictionary<CSteamID, PlayerItemState> _PlayerState = new Dictionary<CSteamID, PlayerItemState>(0);
 
         private int _dictionarySaveInterval = 60000;
-        private Dictionary<string, string> _DisplayNames;
+        private Dictionary<string, string> _DisplayNames = new Dictionary<string, string>();
 
         protected override void Load()
         {
@@ -100,26 +213,25 @@ namespace Shauna.ClaimedItems
                 OnVehicleCarjacked(vehicle, player, ref allow, ref force, ref torque);
         }
 
-        
-        
+
         private void OnVehicleCarjacked(InteractableVehicle vehicle, Player instigatingPlayer, ref bool allow,
             ref Vector3 force, ref Vector3 torque)
         {
             UnturnedPlayer player = UnturnedPlayer.FromPlayer(instigatingPlayer);
             allow = true;
-            
-            
-            if(player.IsAdmin && Configuration.Instance.EnableAdminOverride 
-               || Configuration.Instance.AllowCarjackingOfVehiclesOfOwnerOnOwnersClaimByOthers)
+
+
+            if (player.IsAdmin && Configuration.Instance.EnableAdminOverride
+                || Configuration.Instance.AllowCarjackingOfVehiclesOfOwnerOnOwnersClaimByOthers)
                 return;
-            
+
             if (PlayerAllowedToBuild(player, player.Player.transform.position))
                 return;
-                
-            if(vehicle.lockedOwner != player.CSteamID &&
+
+            if (vehicle.lockedOwner != player.CSteamID &&
                 vehicle.lockedGroup != player.SteamGroupID && player.SteamGroupID != CSteamID.Nil)
                 return;
-            
+
             allow = false;
         }
 
@@ -196,9 +308,9 @@ namespace Shauna.ClaimedItems
             foreach (var sign in approvalSigns)
             {
                 if (BarricadeManager.tryGetInfo(data2Transform[sign], out byte x, out byte y, out ushort plant,
-                    out ushort index, out BarricadeRegion region))
+                        out ushort index, out BarricadeRegion region))
                 {
-                    BarricadeManager.damage(data2Transform[sign], 65000, 65000, true, (CSteamID) sign.owner,
+                    BarricadeManager.damage(data2Transform[sign], 65000, 65000, true, (CSteamID)sign.owner,
                         EDamageOrigin.Charge_Explosion);
                 }
             }
@@ -317,6 +429,7 @@ namespace Shauna.ClaimedItems
         private void ONDropItemRequested(PlayerInventory inventory, Item item, ref bool shouldAllow,
             UnturnedPlayer player)
         {
+            _PlayerState[player.CSteamID].DropRequested = true;
             if (inventory.storage == null) // apparently personal storage is null
                 return;
 
@@ -326,7 +439,6 @@ namespace Shauna.ClaimedItems
             }
         }
 
-
         private void ONInventoryRemoved(byte page, byte index, ItemJar jar, UnturnedPlayer player)
         {
             PlayerItemState playerItemState = _PlayerState[player.CSteamID];
@@ -334,12 +446,11 @@ namespace Shauna.ClaimedItems
             switch (playerItemState.itemState)
             {
                 case PlayerItemState.ItemState.Normal:
-                    playerItemState.SetSource(page, index, jar);
+                    playerItemState.SetSource(page, jar);
                     break;
 
                 case PlayerItemState.ItemState.UndoMove:
-                    playerItemState.ClearSource();
-                    playerItemState.itemState = PlayerItemState.ItemState.Normal;
+                    playerItemState.ResetState();
                     break;
             }
         }
@@ -352,52 +463,106 @@ namespace Shauna.ClaimedItems
             switch (playerItemState.itemState)
             {
                 case PlayerItemState.ItemState.Normal:
-
-                    if (!playerItemState.hasItem())
-                        return;
-                    
-                    if (Configuration.Instance.EnableAdminOverride && player.IsAdmin)
-                        return;
-
-                    if (player.IsInVehicle) // ignore vehicle storage
-                        return;
-
-                    // no vehicle, see if on own claim 
-                    if (PlayerAllowedToBuild(player, player.Player.transform.position)) // ignore own claim
-                        return;
-
-                    if (isFreeCrate(player) &&
-                        playerItemState.sJar.item.id != Configuration.Instance.UnlockedStorageItemId)
-                        return;
-
-                    // page: 2 = Hands, 3 = Backpack, 4 = Vest, 5 = Top, 6 = Bottom, 7 = External
-                    if (playerItemState.sJar.item.id == Configuration.Instance.UnlockedStorageItemId ||
-                        playerItemState.sPage == 7)
-                        playerItemState.itemState = PlayerItemState.ItemState.UndoMove;
-                    else
-                        return;
-
-                    if (Configuration.Instance.LockStorage)
+                    if (!IsAllowed(player, playerItemState))
                     {
-                        player.Inventory.tryAddItem(playerItemState.sJar.item, playerItemState.sJar.x,
-                            playerItemState.sJar.y, playerItemState.sPage,
-                            playerItemState.sJar
-                                .rot); //restore the item to it's original position which triggers an recursive event
+                        if (playerItemState.sJar.item.id == Configuration.Instance.UnlockedStorageItemId ||
+                            playerItemState.IsPageStorage)
+                            playerItemState.itemState = PlayerItemState.ItemState.UndoMove;
+                        
+                        if (Configuration.Instance.LockStorage && playerItemState.itemState == PlayerItemState.ItemState.UndoMove)
+                        {
+                            player.Inventory.tryAddItem(playerItemState.sJar.item, playerItemState.sJar.x,
+                                playerItemState.sJar.y, playerItemState.sPage,
+                                playerItemState.sJar
+                                    .rot); //restore the item to it's original position which triggers an recursive event
 
-                        player.Inventory.removeItem(page, index);
+                            player.Inventory.removeItem(page, index);
+                        }
+
+                        if (Configuration.Instance.LogStorageAction)
+                        {
+                            if (player.Inventory.storage != null)
+                            {
+                                var ownerCSteamID = player.Inventory.storage.owner;
+
+                                LogPlayersAction(jar.item.id, player, ownerCSteamID,
+                                    Configuration.Instance.LockStorage);
+                            }
+                        }
                     }
-                    else
-                        playerItemState.itemState = PlayerItemState.ItemState.Normal;
 
-                    if (Configuration.Instance.LogStorageAction)
+                    playerItemState.ResetState();
+                    break;
+
+                case PlayerItemState.ItemState.UndoSwap:
+
+                    playerItemState.SetDest(page, index, jar);
+
+                    if (!playerItemState.isReadyToSwapBack)
+                        return;
+
+                    if (!IsAllowed(player, playerItemState)  && playerItemState.IsPageStorage)
                     {
-                        var ownerCSteamID = player.Inventory.storage.owner;
+                        playerItemState.GetSwappedSourceAndDest(out byte item0sPage, out ItemJar item0sJar,
+                            out byte item0dPage,
+                            out ItemJar item0dJar, out byte item0dIndex, out byte item1sPage, out ItemJar item1sJar,
+                            out byte item1dPage,
+                            out ItemJar item1dJar, out byte item1dIndex);
 
-                        LogPlayersAction(jar.item.id, player, ownerCSteamID, Configuration.Instance.LockStorage);
+                        if (Configuration.Instance.LockStorage)
+                        {
+                            playerItemState.itemState = PlayerItemState.ItemState.UndoSwapInProgress;
+
+                            player.Inventory.removeItem(item0dPage, item0dIndex);
+                            player.Inventory.removeItem(item1dPage, item1dIndex);
+                           
+
+                            player.Inventory.tryAddItem(item0sJar.item, item0sJar.x,
+                                item0sJar.y, item0sPage,
+                                item0sJar.rot);
+                            player.Inventory.tryAddItem(item1sJar.item, item1sJar.x,
+                                item1sJar.y, item1sPage,
+                                item1sJar.rot);
+                        }
+
+                        if (Configuration.Instance.LogStorageAction)
+                        {
+                            var ownerCSteamID = player.Inventory.storage.owner;
+                            if (item0sPage == 7)
+                                jar = item0sJar;
+                            else if (item1sPage == 7)
+                                jar = item1sJar;
+
+                            LogPlayersAction(jar.item.id, player, ownerCSteamID, Configuration.Instance.LockStorage);
+                        }
+
+                        playerItemState.ResetState();
                     }
 
                     break;
             }
+        }
+
+        private bool IsAllowed(UnturnedPlayer player, PlayerItemState playerItemState)
+        {
+            if (!playerItemState.hasSourceItem)
+                return true;
+
+            if (Configuration.Instance.EnableAdminOverride && player.IsAdmin)
+                return true;
+
+            if (player.IsInVehicle) // ignore vehicle storage
+                return true;
+
+            // no vehicle, see if on own claim 
+            if (PlayerAllowedToBuild(player, player.Player.transform.position)) // ignore own claim
+                return true;
+
+            if (isFreeCrate(player) &&
+                playerItemState.sJar.item.id != Configuration.Instance.UnlockedStorageItemId)
+                return true;
+
+              return false;
         }
 
         private void LogPlayersAction(ushort id, UnturnedPlayer player, CSteamID owner, bool attempted)
@@ -442,10 +607,10 @@ namespace Shauna.ClaimedItems
                 BarricadeData data = region.barricades[index];
 
                 UnturnedPlayer player = UnturnedPlayer.FromCSteamID(steamid);
-                if(player.IsAdmin && Configuration.Instance.EnableAdminOverride)
+                if (player.IsAdmin && Configuration.Instance.EnableAdminOverride)
                     return;
 
-                if ((CSteamID) data.owner ==
+                if ((CSteamID)data.owner ==
                     player.CSteamID) //in Arid notepads can be placed anywhere, allow them to be collected if it's the owner's
                     return;
 
@@ -454,7 +619,7 @@ namespace Shauna.ClaimedItems
                     if (isHarvest)
                     {
                         if (Configuration.Instance.LogHarvest)
-                            LogPlayersAction(data.barricade.id, player, (CSteamID) data.owner,
+                            LogPlayersAction(data.barricade.id, player, (CSteamID)data.owner,
                                 Configuration.Instance.PreventHarvest);
 
                         if (Configuration.Instance.PreventHarvest)
@@ -463,7 +628,7 @@ namespace Shauna.ClaimedItems
                     else
                     {
                         if (Configuration.Instance.LogSalvage)
-                            LogPlayersAction(data.barricade.id, player, (CSteamID) data.owner,
+                            LogPlayersAction(data.barricade.id, player, (CSteamID)data.owner,
                                 Configuration.Instance.PreventSalvage);
 
                         if (Configuration.Instance.PreventSalvage)
