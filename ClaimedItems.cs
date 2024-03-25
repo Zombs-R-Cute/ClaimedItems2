@@ -433,6 +433,9 @@ namespace Shauna.ClaimedItems
             if (inventory.storage == null) // apparently personal storage is null
                 return;
 
+            if(inventory.storage.name.Equals(Configuration.Instance.AirdropCrateID))
+                return;
+            
             if (!PlayerAllowedToBuild(player, player.Player.transform.position))
             {
                 shouldAllow = false;
@@ -549,6 +552,10 @@ namespace Shauna.ClaimedItems
                 return true;
 
             if (Configuration.Instance.EnableAdminOverride && player.IsAdmin)
+                return true;
+
+            if (player.Inventory.storage != null &&
+                player.Inventory.storage.name.Equals(Configuration.Instance.AirdropCrateID))
                 return true;
 
             if (player.IsInVehicle) // ignore vehicle storage
