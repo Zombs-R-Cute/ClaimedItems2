@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
 using Rocket.API;
 using Steamworks;
 
@@ -20,8 +22,6 @@ namespace Shauna.ClaimedItems
         public string SignTextToSearchFor;
         public bool AllowCarjackingOfVehiclesOfOwnerOnOwnersClaimByOthers;
         public string AirdropCrateID;
-        
-        
         public void LoadDefaults()
         {
             EnableAdminOverride = true;
@@ -37,7 +37,7 @@ namespace Shauna.ClaimedItems
             ApprovalSignIds = new ushort[] {1098, 1470}; // Metal Sign, Metal Placard
             SignTextToSearchFor = "APPROVED";
             AllowCarjackingOfVehiclesOfOwnerOnOwnersClaimByOthers = false;
-            AirdropCrateID = "59708"; //arid
+            AirdropCrateID = "1374"; //arid = 59708, vanilla = 1374, polaris = 36095, elver = 57216, buak = 25574
         }
     }
 }

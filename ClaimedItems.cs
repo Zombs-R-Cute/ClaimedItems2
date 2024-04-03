@@ -6,7 +6,6 @@ using System.Threading;
 using Newtonsoft.Json;
 using Rocket.Core.Plugins;
 using Rocket.Unturned;
-using Rocket.Unturned.Chat;
 using Rocket.Unturned.Items;
 using Rocket.Unturned.Player;
 using SDG.Unturned;
@@ -36,13 +35,6 @@ namespace Shauna.ClaimedItems
         private ItemJar[] _sJars = new ItemJar[2];
         private ItemJar[] _dJars = new ItemJar[2];
         private ItemState _itemState = ItemState.Normal;
-        private bool _dropRequested = false;
-
-        public bool DropRequested
-        {
-            get { return _dropRequested; }
-            set { _dropRequested = value; }
-        }
 
         public byte sPage
         {
@@ -62,10 +54,7 @@ namespace Shauna.ClaimedItems
         public ItemState itemState
         {
             get { return _itemState; }
-            set
-            {
-                _itemState = value;
-            }
+            set { _itemState = value; }
         }
 
         public bool hasSourceItem
@@ -93,14 +82,7 @@ namespace Shauna.ClaimedItems
 
         public void SetSource(byte page, ItemJar jar)
         {
-            if (_dropRequested)
-            {
-                _dropRequested = false;
-                return;
-            }
-
-            
-            if (hasSourceItem) //if there's an item already stored assume swap
+           if (hasSourceItem) //if there's an item already stored assume swap
             {
                 if (_sPages[0] == 7 || page == 7)
                 {
@@ -111,8 +93,7 @@ namespace Shauna.ClaimedItems
 
             _sPages[_sStateIndex] = page;
             _sJars[_sStateIndex] = jar;
-
-                    }
+        }
 
         public void SetDest(byte page, byte index, ItemJar jar)
         {
@@ -122,7 +103,6 @@ namespace Shauna.ClaimedItems
             _dIndicies[_dStateIndex] = index;
             _dPages[_dStateIndex] = page;
             _dJars[_dStateIndex] = jar;
-            
         }
 
         public void ResetState()
@@ -138,7 +118,6 @@ namespace Shauna.ClaimedItems
             _itemState = ItemState.Normal;
             _sStateIndex = 0;
             _dStateIndex = 1;
-            _dropRequested = false;
         }
 
         public void GetSwappedSourceAndDest(out byte item0sPage, out ItemJar item0sJar, out byte item0dPage,
@@ -157,8 +136,6 @@ namespace Shauna.ClaimedItems
             item1dJar = _dJars[0];
             item1dIndex = _dIndicies[0];
         }
-        
-        
     }
 
     public class ClaimedItems : RocketPlugin<ClaimedItemsConfiguration>
@@ -429,13 +406,12 @@ namespace Shauna.ClaimedItems
         private void ONDropItemRequested(PlayerInventory inventory, Item item, ref bool shouldAllow,
             UnturnedPlayer player)
         {
-            _PlayerState[player.CSteamID].DropRequested = true;
             if (inventory.storage == null) // apparently personal storage is null
                 return;
 
-            if(inventory.storage.name.Equals(Configuration.Instance.AirdropCrateID))
+            if (inventory.storage.name.Equals(Configuration.Instance.AirdropCrateID))
                 return;
-            
+
             if (!PlayerAllowedToBuild(player, player.Player.transform.position))
             {
                 shouldAllow = false;
@@ -471,8 +447,9 @@ namespace Shauna.ClaimedItems
                         if (playerItemState.sJar.item.id == Configuration.Instance.UnlockedStorageItemId ||
                             playerItemState.IsPageStorage)
                             playerItemState.itemState = PlayerItemState.ItemState.UndoMove;
-                        
-                        if (Configuration.Instance.LockStorage && playerItemState.itemState == PlayerItemState.ItemState.UndoMove)
+
+                        if (Configuration.Instance.LockStorage &&
+                            playerItemState.itemState == PlayerItemState.ItemState.UndoMove)
                         {
                             player.Inventory.tryAddItem(playerItemState.sJar.item, playerItemState.sJar.x,
                                 playerItemState.sJar.y, playerItemState.sPage,
@@ -504,7 +481,7 @@ namespace Shauna.ClaimedItems
                     if (!playerItemState.isReadyToSwapBack)
                         return;
 
-                    if (!IsAllowed(player, playerItemState)  && playerItemState.IsPageStorage)
+                    if (!IsAllowed(player, playerItemState) && playerItemState.IsPageStorage)
                     {
                         playerItemState.GetSwappedSourceAndDest(out byte item0sPage, out ItemJar item0sJar,
                             out byte item0dPage,
@@ -518,7 +495,7 @@ namespace Shauna.ClaimedItems
 
                             player.Inventory.removeItem(item0dPage, item0dIndex);
                             player.Inventory.removeItem(item1dPage, item1dIndex);
-                           
+
 
                             player.Inventory.tryAddItem(item0sJar.item, item0sJar.x,
                                 item0sJar.y, item0sPage,
@@ -569,7 +546,7 @@ namespace Shauna.ClaimedItems
                 playerItemState.sJar.item.id != Configuration.Instance.UnlockedStorageItemId)
                 return true;
 
-              return false;
+            return false;
         }
 
         private void LogPlayersAction(ushort id, UnturnedPlayer player, CSteamID owner, bool attempted)
