@@ -35,6 +35,13 @@ namespace Shauna.ClaimedItems
         private ItemJar[] _sJars = new ItemJar[2];
         private ItemJar[] _dJars = new ItemJar[2];
         private ItemState _itemState = ItemState.Normal;
+        private bool _droppedItem = false;
+
+        public bool DroppedItem
+        {
+            get => _droppedItem;
+            set => _droppedItem = value;
+        }
 
         public byte sPage
         {
@@ -118,6 +125,7 @@ namespace Shauna.ClaimedItems
             _itemState = ItemState.Normal;
             _sStateIndex = 0;
             _dStateIndex = 1;
+            _droppedItem = false;
         }
 
         public void GetSwappedSourceAndDest(out byte item0sPage, out ItemJar item0sJar, out byte item0dPage,
@@ -407,8 +415,11 @@ namespace Shauna.ClaimedItems
             UnturnedPlayer player)
         {
             if (inventory.storage == null) // apparently personal storage is null
+            {
+                _PlayerState[player.CSteamID].DroppedItem = true;
                 return;
-
+            }
+            
             if (inventory.storage.name.Equals(Configuration.Instance.AirdropCrateID))
                 return;
 
@@ -421,7 +432,7 @@ namespace Shauna.ClaimedItems
         private void ONInventoryRemoved(byte page, byte index, ItemJar jar, UnturnedPlayer player)
         {
             PlayerItemState playerItemState = _PlayerState[player.CSteamID];
-
+            
             switch (playerItemState.itemState)
             {
                 case PlayerItemState.ItemState.Normal:
@@ -432,13 +443,15 @@ namespace Shauna.ClaimedItems
                     playerItemState.ResetState();
                     break;
             }
+
+            if (playerItemState.DroppedItem)
+                playerItemState.ResetState();
         }
 
 
         private void OnInventoryAdded(byte page, byte index, ItemJar jar, UnturnedPlayer player)
         {
             PlayerItemState playerItemState = _PlayerState[player.CSteamID]; // grab a local
-
             switch (playerItemState.itemState)
             {
                 case PlayerItemState.ItemState.Normal:
@@ -489,6 +502,12 @@ namespace Shauna.ClaimedItems
                             out byte item1dPage,
                             out ItemJar item1dJar, out byte item1dIndex);
 
+                        if(item0sPage == 7 && item0dPage == 7 && item1sPage == 7 && item1dPage == 7) //allow two items to swap in the crate
+                        {
+                            playerItemState.ResetState();
+                            return;
+                        }          
+                        
                         if (Configuration.Instance.LockStorage)
                         {
                             playerItemState.itemState = PlayerItemState.ItemState.UndoSwapInProgress;
