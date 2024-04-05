@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using Newtonsoft.Json;
 using Rocket.Core.Plugins;
@@ -16,144 +17,9 @@ using Logger = Rocket.Core.Logging.Logger;
 
 namespace Shauna.ClaimedItems
 {
-    public class PlayerItemState
-    {
-        private byte _sStateIndex = 0;
-        private byte _dStateIndex = 1;
-
-        public enum ItemState
-        {
-            Normal, // Nothing to undo
-            UndoMove, // A thief trying to steal from a crate
-            UndoSwap,
-            UndoSwapInProgress
-        }
-
-        private byte[] _sPages = new byte[2];
-        private byte[] _dPages = new byte[2];
-        private byte[] _dIndicies = new byte[2];
-        private ItemJar[] _sJars = new ItemJar[2];
-        private ItemJar[] _dJars = new ItemJar[2];
-        private ItemState _itemState = ItemState.Normal;
-        private bool _droppedItem = false;
-
-        public bool DroppedItem
-        {
-            get => _droppedItem;
-            set => _droppedItem = value;
-        }
-
-        public byte sPage
-        {
-            get { return _sPages[_sStateIndex]; }
-        }
-
-        public byte dPage
-        {
-            get { return _dPages[_sStateIndex]; }
-        }
-
-        public ItemJar sJar
-        {
-            get { return _sJars[_sStateIndex]; }
-        }
-
-        public ItemState itemState
-        {
-            get { return _itemState; }
-            set { _itemState = value; }
-        }
-
-        public bool hasSourceItem
-        {
-            get { return _sJars[_sStateIndex] != null; }
-        }
-
-        public bool isReadyToSwapBack
-        {
-            get { return _sStateIndex == 1 && _dStateIndex == 0; }
-        }
-
-        public bool IsPageStorage
-        {
-            get
-            {
-                for (int i = 0; i < 2; i++)
-                    if (_dPages[i] == 7 || _sPages[i] == 7)
-                        return true;
-
-                return false;
-            }
-        }
-
-
-        public void SetSource(byte page, ItemJar jar)
-        {
-           if (hasSourceItem) //if there's an item already stored assume swap
-            {
-                if (_sPages[0] == 7 || page == 7)
-                {
-                    _sStateIndex = 1;
-                    itemState = ItemState.UndoSwap;
-                }
-            }
-
-            _sPages[_sStateIndex] = page;
-            _sJars[_sStateIndex] = jar;
-        }
-
-        public void SetDest(byte page, byte index, ItemJar jar)
-        {
-            if (_dJars[1] != null)
-                _dStateIndex = 0;
-
-            _dIndicies[_dStateIndex] = index;
-            _dPages[_dStateIndex] = page;
-            _dJars[_dStateIndex] = jar;
-        }
-
-        public void ResetState()
-        {
-            for (int i = 0; i < 2; i++)
-            {
-                _sJars[i] = null;
-                _dJars[i] = null;
-                _sPages[i] = 0;
-                _dPages[i] = 0;
-            }
-
-            _itemState = ItemState.Normal;
-            _sStateIndex = 0;
-            _dStateIndex = 1;
-            _droppedItem = false;
-        }
-
-        public void GetSwappedSourceAndDest(out byte item0sPage, out ItemJar item0sJar, out byte item0dPage,
-            out ItemJar item0dJar, out byte item0dIndex, out byte item1sPage, out ItemJar item1sJar,
-            out byte item1dPage,
-            out ItemJar item1dJar, out byte item1dIndex)
-        {
-            item0sPage = _sPages[0];
-            item0sJar = _sJars[0];
-            item0dPage = _dPages[1];
-            item0dJar = _dJars[1];
-            item0dIndex = _dIndicies[1];
-            item1sPage = _sPages[1];
-            item1sJar = _sJars[1];
-            item1dPage = _dPages[0];
-            item1dJar = _dJars[0];
-            item1dIndex = _dIndicies[0];
-        }
-    }
-
     public class ClaimedItems : RocketPlugin<ClaimedItemsConfiguration>
     {
         string filename = "Plugins/ClaimedItems2/ID-Name.json";
-
-        /// <summary>
-        /// Maintains the state of items moved for preventing theft by essentially locking storage
-        /// </summary>
-        private Dictionary<CSteamID, PlayerItemState> _PlayerState = new Dictionary<CSteamID, PlayerItemState>(0);
 
         private int _dictionarySaveInterval = 60000;
         private Dictionary<string, string> _DisplayNames = new Dictionary<string, string>();
@@ -161,6 +27,8 @@ namespace Shauna.ClaimedItems
         protected override void Load()
         {
             Logger.Log("Starting ClaimedItems");
+            Level.onPrePreLevelLoaded += OnPrePreLevelLoaded;
+            ;
             BarricadeManager.onHarvestPlantRequested += (CSteamID steamid, byte x, byte y, ushort plant, ushort index,
                     ref bool shouldallow) =>
                 OnHarvestOrSalvageRequested(steamid, x, y, plant, index, ref shouldallow, true);
@@ -169,7 +37,6 @@ namespace Shauna.ClaimedItems
                     ref bool shouldallow) =>
                 OnHarvestOrSalvageRequested(steamid, x, y, plant, index, ref shouldallow, false);
             U.Events.OnPlayerConnected += EventsOnOnPlayerConnected;
-            U.Events.OnPlayerDisconnected += EventsOnOnPlayerDisconnected;
 
             _dictionarySaveInterval = Configuration.Instance.BackgroundIDDictionarySaveIntervalInMinutes * 60000;
             LoadID2NameDictionary();
@@ -198,6 +65,37 @@ namespace Shauna.ClaimedItems
                 OnVehicleCarjacked(vehicle, player, ref allow, ref force, ref torque);
         }
 
+        private void OnPrePreLevelLoaded(int level)
+        {
+            Asset[] AssetList = Assets.find(EAssetType.ITEM);
+            BindingFlags bindingFlags = BindingFlags.Instance | BindingFlags.NonPublic;
+            foreach (var asset in AssetList)
+            {
+                if (asset is ItemStorageAsset)
+                {
+                    ItemStorageAsset storageAsset = asset as ItemStorageAsset;
+                    if (Configuration.Instance.FreeStorageIds.Contains(storageAsset.id))
+                    {
+                        Logger.Log("Storage id: " + storageAsset.id + " is unlocked to use as a Free storage box.");
+                        continue;
+                    }
+
+                    if(storageAsset.id == Configuration.Instance.AirdropCrateID)
+                    {
+                        Logger.Log("Storage id: " + storageAsset.id + " is an unlocked Airdrop crate.");
+                        continue;
+                    }
+                        
+                    if ((storageAsset.isDisplay && !storageAsset.isLocked) ||
+                        (!storageAsset.isLocked && Configuration.Instance.LockStorage )) //
+                    {
+                        Logger.Log("Set storage id:" + storageAsset.id + " to locked.");
+
+                        storageAsset.GetType().GetField("_isLocked", bindingFlags).SetValue(storageAsset, true);
+                    }
+                }
+            }
+        }
 
         private void OnVehicleCarjacked(InteractableVehicle vehicle, Player instigatingPlayer, ref bool allow,
             ref Vector3 force, ref Vector3 torque)
@@ -351,222 +249,12 @@ namespace Shauna.ClaimedItems
 
         private void EventsOnOnPlayerConnected(UnturnedPlayer player)
         {
-            _PlayerState[player.CSteamID] = new PlayerItemState();
-            PlayerSubscribeToOnInventoryAdded(player);
-            PlayerSubscribeToOnInventoryRemoved(player);
-            PlayerSubscribeToDropRequested(player);
             lock (_DisplayNames)
             {
                 _DisplayNames[player.CSteamID.ToString()] = player.DisplayName;
             }
         }
 
-
-        private void EventsOnOnPlayerDisconnected(UnturnedPlayer player)
-        {
-            PlayerUnsubscribeToOnInventoryAdded(player);
-            PlayerUnsubscribeToOnInventoryRemoved(player);
-            PlayerUnsubscribeToDropRequested(player);
-        }
-
-
-        private void PlayerSubscribeToDropRequested(UnturnedPlayer player)
-        {
-            player.Player.inventory.onDropItemRequested +=
-                (PlayerInventory inventory, Item item, ref bool allow) =>
-                    ONDropItemRequested(inventory, item, ref allow, player);
-        }
-
-
-        private void PlayerUnsubscribeToDropRequested(UnturnedPlayer player)
-        {
-            player.Player.inventory.onDropItemRequested -=
-                (PlayerInventory inventory, Item item, ref bool allow) =>
-                    ONDropItemRequested(inventory, item, ref allow, player);
-        }
-
-
-        private void PlayerSubscribeToOnInventoryAdded(UnturnedPlayer player)
-        {
-            player.Player.inventory.onInventoryAdded +=
-                (page, index, jar) => OnInventoryAdded(page, index, jar, player);
-        }
-
-        private void PlayerSubscribeToOnInventoryRemoved(UnturnedPlayer player)
-        {
-            player.Player.inventory.onInventoryRemoved +=
-                (page, index, jar) => ONInventoryRemoved(page, index, jar, player);
-        }
-
-        private void PlayerUnsubscribeToOnInventoryAdded(UnturnedPlayer player)
-        {
-            player.Player.inventory.onInventoryAdded -=
-                (page, index, jar) => OnInventoryAdded(page, index, jar, player);
-        }
-
-        private void PlayerUnsubscribeToOnInventoryRemoved(UnturnedPlayer player)
-        {
-            player.Player.inventory.onInventoryRemoved -=
-                (page, index, jar) => ONInventoryRemoved(page, index, jar, player);
-        }
-
-
-        private void ONDropItemRequested(PlayerInventory inventory, Item item, ref bool shouldAllow,
-            UnturnedPlayer player)
-        {
-            if (inventory.storage == null) // apparently personal storage is null
-            {
-                _PlayerState[player.CSteamID].DroppedItem = true;
-                return;
-            }
-            
-            if (inventory.storage.name.Equals(Configuration.Instance.AirdropCrateID))
-                return;
-
-            if (!PlayerAllowedToBuild(player, player.Player.transform.position))
-            {
-                shouldAllow = false;
-            }
-        }
-
-        private void ONInventoryRemoved(byte page, byte index, ItemJar jar, UnturnedPlayer player)
-        {
-            PlayerItemState playerItemState = _PlayerState[player.CSteamID];
-            
-            switch (playerItemState.itemState)
-            {
-                case PlayerItemState.ItemState.Normal:
-                    playerItemState.SetSource(page, jar);
-                    break;
-
-                case PlayerItemState.ItemState.UndoMove:
-                    playerItemState.ResetState();
-                    break;
-            }
-
-            if (playerItemState.DroppedItem)
-                playerItemState.ResetState();
-        }
-
-
-        private void OnInventoryAdded(byte page, byte index, ItemJar jar, UnturnedPlayer player)
-        {
-            PlayerItemState playerItemState = _PlayerState[player.CSteamID]; // grab a local
-            switch (playerItemState.itemState)
-            {
-                case PlayerItemState.ItemState.Normal:
-                    if (!IsAllowed(player, playerItemState))
-                    {
-                        if (playerItemState.sJar.item.id == Configuration.Instance.UnlockedStorageItemId ||
-                            playerItemState.IsPageStorage)
-                            playerItemState.itemState = PlayerItemState.ItemState.UndoMove;
-
-                        if (Configuration.Instance.LockStorage &&
-                            playerItemState.itemState == PlayerItemState.ItemState.UndoMove)
-                        {
-                            player.Inventory.tryAddItem(playerItemState.sJar.item, playerItemState.sJar.x,
-                                playerItemState.sJar.y, playerItemState.sPage,
-                                playerItemState.sJar
-                                    .rot); //restore the item to it's original position which triggers an recursive event
-
-                            player.Inventory.removeItem(page, index);
-                        }
-
-                        if (Configuration.Instance.LogStorageAction)
-                        {
-                            if (player.Inventory.storage != null)
-                            {
-                                var ownerCSteamID = player.Inventory.storage.owner;
-
-                                LogPlayersAction(jar.item.id, player, ownerCSteamID,
-                                    Configuration.Instance.LockStorage);
-                            }
-                        }
-                    }
-
-                    playerItemState.ResetState();
-                    break;
-
-                case PlayerItemState.ItemState.UndoSwap:
-
-                    playerItemState.SetDest(page, index, jar);
-
-                    if (!playerItemState.isReadyToSwapBack)
-                        return;
-
-                    if (!IsAllowed(player, playerItemState) && playerItemState.IsPageStorage)
-                    {
-                        playerItemState.GetSwappedSourceAndDest(out byte item0sPage, out ItemJar item0sJar,
-                            out byte item0dPage,
-                            out ItemJar item0dJar, out byte item0dIndex, out byte item1sPage, out ItemJar item1sJar,
-                            out byte item1dPage,
-                            out ItemJar item1dJar, out byte item1dIndex);
-
-                        if(item0sPage == 7 && item0dPage == 7 && item1sPage == 7 && item1dPage == 7) //allow two items to swap in the crate
-                        {
-                            playerItemState.ResetState();
-                            return;
-                        }          
-                        
-                        if (Configuration.Instance.LockStorage)
-                        {
-                            playerItemState.itemState = PlayerItemState.ItemState.UndoSwapInProgress;
-
-                            player.Inventory.removeItem(item0dPage, item0dIndex);
-                            player.Inventory.removeItem(item1dPage, item1dIndex);
-
-
-                            player.Inventory.tryAddItem(item0sJar.item, item0sJar.x,
-                                item0sJar.y, item0sPage,
-                                item0sJar.rot);
-                            player.Inventory.tryAddItem(item1sJar.item, item1sJar.x,
-                                item1sJar.y, item1sPage,
-                                item1sJar.rot);
-                        }
-
-                        if (Configuration.Instance.LogStorageAction)
-                        {
-                            var ownerCSteamID = player.Inventory.storage.owner;
-                            if (item0sPage == 7)
-                                jar = item0sJar;
-                            else if (item1sPage == 7)
-                                jar = item1sJar;
-
-                            LogPlayersAction(jar.item.id, player, ownerCSteamID, Configuration.Instance.LockStorage);
-                        }
-
-                        playerItemState.ResetState();
-                    }
-
-                    break;
-            }
-        }
-
-        private bool IsAllowed(UnturnedPlayer player, PlayerItemState playerItemState)
-        {
-            if (!playerItemState.hasSourceItem)
-                return true;
-
-            if (Configuration.Instance.EnableAdminOverride && player.IsAdmin)
-                return true;
-
-            if (player.Inventory.storage != null &&
-                player.Inventory.storage.name.Equals(Configuration.Instance.AirdropCrateID))
-                return true;
-
-            if (player.IsInVehicle) // ignore vehicle storage
-                return true;
-
-            // no vehicle, see if on own claim 
-            if (PlayerAllowedToBuild(player, player.Player.transform.position)) // ignore own claim
-                return true;
-
-            if (isFreeCrate(player) &&
-                playerItemState.sJar.item.id != Configuration.Instance.UnlockedStorageItemId)
-                return true;
-
-            return false;
-        }
 
         private void LogPlayersAction(ushort id, UnturnedPlayer player, CSteamID owner, bool attempted)
         {
@@ -583,21 +271,6 @@ namespace Shauna.ClaimedItems
                     UnturnedItems.GetItemAssetById(id).itemName,
                     id)
             );
-        }
-
-
-        private bool isFreeCrate(UnturnedPlayer player)
-        {
-            byte itemCount = player.Player.inventory.getItemCount(7);
-            for (byte index = 0; index < itemCount; index++)
-            {
-                if (player.Player.inventory.getItem(7, index).item.id == Configuration.Instance.UnlockedStorageItemId)
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
 
 
