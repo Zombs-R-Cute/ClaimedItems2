@@ -22,8 +22,6 @@ namespace Shauna.ClaimedItems
         public string SignTextToSearchFor;
         public bool AllowCarjackingOfVehiclesOfOwnerOnOwnersClaimByOthers;
         public ushort AirdropCrateID;
-        [XmlArray(ElementName = "FreeStorageIds"), XmlArrayItem(ElementName = "Item")]
-        public HashSet<ushort> FreeStorageIds;
 
         public void LoadDefaults()
         {
@@ -39,7 +37,6 @@ namespace Shauna.ClaimedItems
             SignTextToSearchFor = "APPROVED";
             AllowCarjackingOfVehiclesOfOwnerOnOwnersClaimByOthers = false;
             AirdropCrateID = 59708; //arid = 59708, vanilla = 1374, polaris = 36095, elver = 57216, buak = 25574
-            FreeStorageIds = new HashSet<ushort>() { 59518 };
         }
     }
 }

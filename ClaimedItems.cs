@@ -2,11 +2,12 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Threading;
+using HarmonyLib;
 using Newtonsoft.Json;
 using Rocket.Core.Plugins;
 using Rocket.Unturned;
+using Rocket.Unturned.Chat;
 using Rocket.Unturned.Items;
 using Rocket.Unturned.Player;
 using SDG.Unturned;
@@ -17,8 +18,10 @@ using Logger = Rocket.Core.Logging.Logger;
 
 namespace Shauna.ClaimedItems
 {
+    [HarmonyPatch]
     public class ClaimedItems : RocketPlugin<ClaimedItemsConfiguration>
     {
+        public static ClaimedItems instance;
         string filename = "Plugins/ClaimedItems2/ID-Name.json";
 
         private int _dictionarySaveInterval = 60000;
@@ -26,9 +29,12 @@ namespace Shauna.ClaimedItems
 
         protected override void Load()
         {
+            instance = this;
+            Harmony harmony = new Harmony("ClaimedItems2");
+            harmony.PatchAll();
+
             Logger.Log("Starting ClaimedItems");
-            Level.onPrePreLevelLoaded += OnPrePreLevelLoaded;
-            ;
+
             BarricadeManager.onHarvestPlantRequested += (CSteamID steamid, byte x, byte y, ushort plant, ushort index,
                     ref bool shouldallow) =>
                 OnHarvestOrSalvageRequested(steamid, x, y, plant, index, ref shouldallow, true);
@@ -63,38 +69,6 @@ namespace Shauna.ClaimedItems
             VehicleManager.onVehicleCarjacked += (InteractableVehicle vehicle, Player player, ref bool allow,
                     ref Vector3 force, ref Vector3 torque) =>
                 OnVehicleCarjacked(vehicle, player, ref allow, ref force, ref torque);
-        }
-
-        private void OnPrePreLevelLoaded(int level)
-        {
-            Asset[] AssetList = Assets.find(EAssetType.ITEM);
-            BindingFlags bindingFlags = BindingFlags.Instance | BindingFlags.NonPublic;
-            foreach (var asset in AssetList)
-            {
-                if (asset is ItemStorageAsset)
-                {
-                    ItemStorageAsset storageAsset = asset as ItemStorageAsset;
-                    if (Configuration.Instance.FreeStorageIds.Contains(storageAsset.id))
-                    {
-                        Logger.Log("Storage id: " + storageAsset.id + " is unlocked to use as a Free storage box.");
-                        continue;
-                    }
-
-                    if(storageAsset.id == Configuration.Instance.AirdropCrateID)
-                    {
-                        Logger.Log("Storage id: " + storageAsset.id + " is an unlocked Airdrop crate.");
-                        continue;
-                    }
-                        
-                    if ((storageAsset.isDisplay && !storageAsset.isLocked) ||
-                        (!storageAsset.isLocked && Configuration.Instance.LockStorage )) //
-                    {
-                        Logger.Log("Set storage id:" + storageAsset.id + " to locked.");
-
-                        storageAsset.GetType().GetField("_isLocked", bindingFlags).SetValue(storageAsset, true);
-                    }
-                }
-            }
         }
 
         private void OnVehicleCarjacked(InteractableVehicle vehicle, Player instigatingPlayer, ref bool allow,
@@ -255,6 +229,21 @@ namespace Shauna.ClaimedItems
             }
         }
 
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(PlayerInventory), nameof(PlayerInventory.sendStorage))]
+            static bool sendStorage(PlayerInventory __instance)
+            {
+                var player = UnturnedPlayer.FromPlayer(__instance.player);
+                if (!PlayerAllowedToBuild(player, __instance.storage.transform.position) 
+                    && !__instance.storage.name.Equals(instance.Configuration.Instance.AirdropCrateID.ToString())
+                    && !(instance.Configuration.Instance.EnableAdminOverride && player.IsAdmin))
+                {
+                    UnturnedChat.Say(player, "You are not allowed to access this storage.", Color.red);
+                    return false;
+                }
+
+                return true;
+            }
 
         private void LogPlayersAction(ushort id, UnturnedPlayer player, CSteamID owner, bool attempted)
         {
@@ -315,7 +304,7 @@ namespace Shauna.ClaimedItems
         }
 
 
-        private bool PlayerAllowedToBuild(UnturnedPlayer player, Vector3 location)
+        public static bool PlayerAllowedToBuild(UnturnedPlayer player, Vector3 location)
         {
             if (ClaimManager.checkCanBuild(location, player.CSteamID, player.Player.quests.groupID, false))
                 return true;
