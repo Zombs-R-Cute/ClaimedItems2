@@ -21,7 +21,6 @@ namespace Shauna.ClaimedItems
         public ushort[] ApprovalSignIds;
         public string SignTextToSearchFor;
         public bool AllowCarjackingOfVehiclesOfOwnerOnOwnersClaimByOthers;
-        public ushort AirdropCrateID;
 
         public void LoadDefaults()
         {
@@ -36,7 +35,6 @@ namespace Shauna.ClaimedItems
             ApprovalSignIds = new ushort[] {1098, 1470}; // Metal Sign, Metal Placard
             SignTextToSearchFor = "APPROVED";
             AllowCarjackingOfVehiclesOfOwnerOnOwnersClaimByOthers = false;
-            AirdropCrateID = 59708; //arid = 59708, vanilla = 1374, polaris = 36095, elver = 57216, buak = 25574
         }
     }
 }

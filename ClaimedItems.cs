@@ -30,8 +30,11 @@ namespace Shauna.ClaimedItems
         protected override void Load()
         {
             instance = this;
-            Harmony harmony = new Harmony("ClaimedItems2");
-            harmony.PatchAll();
+            if(Configuration.Instance.LockStorage)
+            {
+                Harmony harmony = new Harmony("ClaimedItems2");
+                harmony.PatchAll();
+            }
 
             Logger.Log("Starting ClaimedItems");
 
@@ -235,7 +238,7 @@ namespace Shauna.ClaimedItems
             {
                 var player = UnturnedPlayer.FromPlayer(__instance.player);
                 if (!PlayerAllowedToBuild(player, __instance.storage.transform.position) 
-                    && !__instance.storage.name.Equals(instance.Configuration.Instance.AirdropCrateID.ToString())
+                    && __instance.storage.owner != CSteamID.Nil//Airdrop has no owner
                     && !(instance.Configuration.Instance.EnableAdminOverride && player.IsAdmin))
                 {
                     UnturnedChat.Say(player, "You are not allowed to access this storage.", Color.red);
