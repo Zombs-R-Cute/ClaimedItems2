@@ -237,7 +237,9 @@ namespace Shauna.ClaimedItems
             static bool sendStorage(PlayerInventory __instance)
             {
                 var player = UnturnedPlayer.FromPlayer(__instance.player);
-                if (!PlayerAllowedToBuild(player, __instance.storage.transform.position) 
+                
+                if (__instance.storage != null 
+                    && !PlayerAllowedToBuild(player, __instance.storage.transform.position) 
                     && __instance.storage.owner != CSteamID.Nil//Airdrop has no owner
                     && !(instance.Configuration.Instance.EnableAdminOverride && player.IsAdmin))
                 {
