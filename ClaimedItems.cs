@@ -80,18 +80,21 @@ namespace Shauna.ClaimedItems
             UnturnedPlayer player = UnturnedPlayer.FromPlayer(instigatingPlayer);
             allow = true;
 
-
             if (player.IsAdmin && Configuration.Instance.EnableAdminOverride
                 || Configuration.Instance.AllowCarjackingOfVehiclesOfOwnerOnOwnersClaimByOthers)
                 return;
-
+                
             if (PlayerAllowedToBuild(player, player.Player.transform.position))
+                return;
+           
+            //check if the vehicle is on it's owner's claim, allow carjacking if it's not
+            if(!PlayerAllowedToBuild(UnturnedPlayer.FromCSteamID(vehicle.lockedOwner), vehicle.transform.position))
                 return;
 
             if (vehicle.lockedOwner != player.CSteamID &&
-                vehicle.lockedGroup != player.SteamGroupID && player.SteamGroupID != CSteamID.Nil)
+                vehicle.lockedGroup != player.Player.quests.groupID && player.Player.quests.groupID != CSteamID.Nil)
                 return;
-
+            
             allow = false;
         }
 
