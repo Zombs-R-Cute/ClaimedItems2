@@ -236,14 +236,12 @@ namespace Shauna.ClaimedItems
         }
 
         [HarmonyPrefix]
-        [HarmonyPatch(typeof(PlayerInventory), nameof(PlayerInventory.sendStorage))]
-            static bool sendStorage(PlayerInventory __instance)
+        [HarmonyPatch(typeof(InteractableStorage), nameof(InteractableStorage.ReceiveInteractRequest))]
+            static bool ReceiveInteractRequest(in ServerInvocationContext context, bool quickGrab, InteractableStorage __instance)
             {
-                var player = UnturnedPlayer.FromPlayer(__instance.player);
-                
-                if (__instance.storage != null 
-                    && !PlayerAllowedToBuild(player, __instance.storage.transform.position) 
-                    && __instance.storage.owner != CSteamID.Nil//Airdrop has no owner
+                var player = UnturnedPlayer.FromPlayer(context.GetPlayer());
+                if(!PlayerAllowedToBuild(player, __instance.transform.position) 
+                    && __instance.owner != CSteamID.Nil//Airdrop has no owner
                     && !(instance.Configuration.Instance.EnableAdminOverride && player.IsAdmin))
                 {
                     UnturnedChat.Say(player, "You are not allowed to access this storage.", Color.red);
